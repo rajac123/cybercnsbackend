@@ -10,14 +10,19 @@ import zipfile
 import os
 import salt.config
 import salt.client
-# ========= salt config ================ #
+import requests
+
+# ========= router ========================== #
+
+router = APIRouter(prefix="/user", tags=['Users'])
 
 
+# ========= golobal Variables ================= #
 
-router = APIRouter(
-    prefix="/user",
-    tags=['Users']
-)
+master_client = salt.client.LocalClient()
+json_datas = open('cyber/config.json') 
+json_data = json.load(json_datas)
+
 
 
 def fetchData(data):
@@ -31,15 +36,15 @@ def fetchData(data):
 
 # ======== elasticSerach Configuration ========== #
 
-es = Elasticsearch(
-    ['192.168.1.205'],
-    http_auth=('admin', 'vzbEic1fmNwUZLET'),
-    scheme="https",
-    port=9200,
-    connection_class=RequestsHttpConnection,
-    use_ssl=True, 
-    verify_certs=False
-  )
+# es = Elasticsearch(
+#     ['192.168.1.205'],
+#     http_auth=('admin', 'vzbEic1fmNwUZLET'),
+#     scheme="https",
+#     port=9200,
+#     connection_class=RequestsHttpConnection,
+#     use_ssl=True, 
+#     verify_certs=False
+#   )
 
 # es = Elasticsearch(
 #     ['106.51.72.244'],
@@ -50,6 +55,9 @@ es = Elasticsearch(
 #     use_ssl=True, 
 #     verify_certs=False
 #   )
+
+
+
 
 # ======== elasticSerach GetallRecords ========== #
 
@@ -89,32 +97,52 @@ def getone_byid(indice, name):
 
 @router.post('/getcustomer')
 def getonecustomer(firstName: str):
-  result = getone_byid('test_partner-portal',firstName)
-  return JSONResponse({'status': 'success', 'data': result})
+  try:
+    result = getone_byid('test_partner-portal',firstName)
+    return JSONResponse({'status': 'success', 'data': result})
+  except:
+    return JSONResponse({'status': 'failed', 'data': []})
+
 
 
 @router.get("/elasticsearch")
 def get_users():
-  result = get_all('test_partner-portal')
-  return JSONResponse({'status': 'success', 'data': result})
+  try:
+    result = get_all('test_partner-portal')
+    return JSONResponse({'status': 'success', 'data': result})
+  except:
+    return JSONResponse({'status': 'failed', 'data': []})
+
 
 
 @router.put("/update_data")
 def update(user: Dict):
-  result = update_data('test_partner-portal', user['_id'], user)
-  return JSONResponse({'status': 'success', 'data': result})
+  try:
+    result = update_data('test_partner-portal', user['_id'], user)
+    return JSONResponse({'status': 'success', 'data': result})
+  except:
+    return JSONResponse({'status': 'failed', 'data': []})
+
+
+
+
+@router.get("/cyber/{minion_id}/getBuildInfo")
+def getbuildinfo(minion_id: str):
+  headers = {"Content-Type": "application/json", "accept": "application/json"}
+  url = 'https://betadev.mycybercns.com/api/cyberutils/'+minion_id+'/getBuildInfo'
+  res = requests.post(url = url, headers=headers, json = {})
+  print(res.json)
+  try:
+    return True
+  except:
+    return False
 
 
 # ============ zip and download =========== #
 
 
-
-# outPath = '/var/log/raja'
-# zipfilename = '/var/log/sample.zip'
-
-def getzip(outPath, zipfilename):
+def getzip(outPath, zipfilename, filename):
   zipObj = zipfile.ZipFile(zipfilename, 'w')
-  filename = ['cybercns.log','cybercnsticket_processor.log', 'cybercnsasset_processor.log', 'cybercns_integration.log']
   retval = os.getcwd()
   os.chdir(outPath)
   for files in os.listdir(outPath):
@@ -125,26 +153,27 @@ def getzip(outPath, zipfilename):
   path = os.path.join(zipfilename)
   return path
 
-master_client = salt.client.LocalClient()
 
-@router.get("/ifconfig")
-def ifconfig():
+
+
+
+
+def getminionlogs():
   minion_id = '1.0.0.127.in-addr.arpa'
-  source_file = '/var/log/cybercns/'
-  file_path = "/var/cache/salt/master/minions/"+minion_id+"/files/tmp"
-  out_cmd = master_client.cmd(minion_id,'cp.push_dir' ,[source_file])
-  if out_cmd and out_cmd[minion_id]:
-    # files = os.path.join(file_path)
-    files = getzip(file_path, 'var/log/cybercns.zip')
-    if os.path.exists(files):
-      return FileResponse(path=files, filename='cybercns.log')
+  minion_path = '/var/log/cybercns/'
+  master_path = "/var/cache/salt/master/minions/"+minion_id+"/files/tmp"
+  cp_dir = os.system('salt "*" cp.push_dir /var/log/cybercns  upload_path=/tmp')
+  filename = ['cybercns.log','cybercnsticket_processor.log', 'cybercnsasset_processor.log', 'cybercns_integration.log']
+  if len(filename) > 1:
+    if out_cmd and out_cmd[minion_id]:
+      files = getzip(file_path, '/var/log/cybercns.zip')
+      if os.path.exists(files):
+        return FileResponse(path=files, filename='cybercns.log')
+    else:
+      return False
   else:
-    return False
+    return True
+    # write single file copy
 
-
-import os
->>> os.system('salt "*" cp.push_dir /var/log/cybercns  upload_path=/tmp')
-
-
-
+getminionlogs()
 
